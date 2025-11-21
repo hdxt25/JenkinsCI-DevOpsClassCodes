@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devopsclasscodes-deploy
+  namespace: devopsclasscodes
+  labels:
+    app: devopsclasscodes
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: devopsclasscodes
+  template:
+    metadata:
+      labels:
+        app: devopsclasscodes
+    spec:
+      containers:
+      - name: devopsclasscodes-cont
+        image: hdxt25/devopsclasscodes:0
+        ports:
+        - containerPort: 8080

@@ -35,11 +35,11 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Build,Compile,test,package') {
             steps {
                 sh 'mvn compile'
-                sh 'mvn -P metrics pmd:pmd '
-                sh 'mvn test ' 
+                sh 'mvn -P metrics pmd:pmd'
+                sh 'mvn test' 
                 sh 'mvn package'
             }
         }
@@ -110,9 +110,9 @@ pipeline {
                 script{
                     dir('kubernetes'){
                         sh """
-                            GIT_COMMIT=\$(git rev-parse HEAD)
-                            echo "Current Git commit: \$GIT_COMMIT"
-                            sed -i 's|hdxt25/devopsclasscodes:.*|hdxt25/devopsclasscodes:\${GIT_COMMIT}|g' devopsclasscodes-deployment.yaml
+                            BUILD_NUMBER=\$(git rev-parse HEAD)
+                            echo "Current BUILD NUMBER: \$BUILD_NUMBER"
+                            sed -i 's|hdxt25/devopsclasscodes:.*|hdxt25/devopsclasscodes:\${BUILD_NUMBER}|g' devopsclasscodes-deployment.yaml
                             grep -A 1 "image:" devopsclasscodes-deployment.yaml              
                         """
                     }
