@@ -1,0 +1,156 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "EKS Cluster with 3-node t3.micro Managed Nodegroup",
+
+  "Resources": {
+    "EKSClusterRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": { "Service": "eks.amazonaws.com" },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+        ]
+      }
+    },
+
+    "EKSNodeRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": { "Service": "ec2.amazonaws.com" },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+          "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+          "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+        ]
+      }
+    },
+
+    "VPC": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.0.0.0/16",
+        "EnableDnsSupport": true,
+        "EnableDnsHostnames": true,
+        "Tags": [{ "Key": "Name", "Value": "eks-vpc" }]
+      }
+    },
+
+    "Subnet1": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": { "Ref": "VPC" },
+        "CidrBlock": "10.0.1.0/24",
+        "AvailabilityZone": { "Fn::Select": [0, { "Fn::GetAZs": "" }] },
+        "MapPublicIpOnLaunch": true
+      }
+    },
+
+    "Subnet2": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": { "Ref": "VPC" },
+        "CidrBlock": "10.0.2.0/24",
+        "AvailabilityZone": { "Fn::Select": [1, { "Fn::GetAZs": "" }] },
+        "MapPublicIpOnLaunch": true
+      }
+    },
+
+    "InternetGateway": {
+      "Type": "AWS::EC2::InternetGateway"
+    },
+
+    "AttachGateway": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": { "Ref": "VPC" },
+        "InternetGatewayId": { "Ref": "InternetGateway" }
+      }
+    },
+
+    "PublicRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": { "Ref": "VPC" }
+      }
+    },
+
+    "PublicRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": "AttachGateway",
+      "Properties": {
+        "RouteTableId": { "Ref": "PublicRouteTable" },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": { "Ref": "InternetGateway" }
+      }
+    },
+
+    "Subnet1RouteTableAssoc": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": { "Ref": "Subnet1" },
+        "RouteTableId": { "Ref": "PublicRouteTable" }
+      }
+    },
+
+    "Subnet2RouteTableAssoc": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": { "Ref": "Subnet2" },
+        "RouteTableId": { "Ref": "PublicRouteTable" }
+      }
+    },
+
+    "EKSCluster": {
+      "Type": "AWS::EKS::Cluster",
+      "Properties": {
+        "Name": "my-eks-cluster",
+        "Version": "1.30",
+        "RoleArn": { "Fn::GetAtt": ["EKSClusterRole", "Arn"] },
+        "ResourcesVpcConfig": {
+          "SubnetIds": [
+            { "Ref": "Subnet1" },
+            { "Ref": "Subnet2" }
+          ]
+        }
+      }
+    },
+
+    "NodeGroup": {
+      "Type": "AWS::EKS::Nodegroup",
+      "DependsOn": "EKSCluster",
+      "Properties": {
+        "ClusterName": { "Ref": "EKSCluster" },
+        "NodegroupName": "eks-micro-nodes",
+        "NodeRole": { "Fn::GetAtt": ["EKSNodeRole", "Arn"] },
+        "ScalingConfig": {
+          "MinSize": 3,
+          "DesiredSize": 3,
+          "MaxSize": 3
+        },
+        "InstanceTypes": ["t3.micro"],
+        "Subnets": [
+          { "Ref": "Subnet1" },
+          { "Ref": "Subnet2" }
+        ]
+      }
+    }
+  }
+}

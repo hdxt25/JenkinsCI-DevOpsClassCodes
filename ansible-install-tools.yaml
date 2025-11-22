@@ -1,0 +1,138 @@
+---
+- name: Install Jenkins, Git, Docker, Trivy, OWASP, AWS CLI, eksctl, kubectl
+  hosts: localhost
+  become: yes
+  connection: local
+
+  vars:
+    local_user: "{{ lookup('env','USER') }}"
+
+  tasks:
+
+  # -------------------------
+  # System update
+  # -------------------------
+  - name: Update apt packages
+    apt:
+      update_cache: yes
+
+  # -------------------------
+  # Install Git
+  # -------------------------
+  - name: Install Git
+    apt:
+      name: git
+      state: present
+
+  # -------------------------
+  # Install Java (required for Jenkins & Dependency Check)
+  # -------------------------
+  - name: Install OpenJDK 17
+    apt:
+      name: openjdk-17-jdk
+      state: present
+
+  # -------------------------
+  # Install Jenkins
+  # -------------------------
+  - name: Add Jenkins repo key
+    get_url:
+      url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+      dest: /usr/share/keyrings/jenkins-keyring.asc
+      mode: "0644"
+
+  - name: Add Jenkins repository
+    apt_repository:
+      repo: "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/"
+      state: present
+
+  - name: Install Jenkins
+    apt:
+      name: jenkins
+      state: present
+      update_cache: yes
+
+  # -------------------------
+  # Install Docker
+  # -------------------------
+  - name: Install Docker
+    apt:
+      name: docker.io
+      state: present
+
+  - name: Enable Docker
+    systemd:
+      name: docker
+      state: started
+      enabled: yes
+
+  - name: Add local user to docker group
+    user:
+      name: "{{ local_user }}"
+      groups: docker
+      append: yes
+
+  # -------------------------
+  # Install Trivy
+  # -------------------------
+  - name: Add Trivy GPG key
+    apt_key:
+      url: https://aquasecurity.github.io/trivy-repo/deb/public.key
+      state: present
+
+  - name: Add Trivy repository
+    apt_repository:
+      repo: "deb https://aquasecurity.github.io/trivy-repo/deb jammy main"
+      state: present
+
+  - name: Install Trivy
+    apt:
+      name: trivy
+      state: present
+
+
+  # -------------------------
+  # Install AWS CLI v2
+  # -------------------------
+  - name: Install unzip (required for AWS CLI ZIP)
+    apt:
+      name: unzip
+      state: present
+      update_cache: yes
+
+  - name: Download AWS CLI v2
+    get_url:
+      url: "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+      dest: /tmp/awscliv2.zip
+
+  - name: Unzip AWS CLI
+    unarchive:
+      src: /tmp/awscliv2.zip
+      dest: /tmp/
+      remote_src: yes
+
+  - name: Install AWS CLI
+    command: /tmp/aws/install
+
+  # -------------------------
+  # Install kubectl
+  # -------------------------
+  - name: Install kubectl
+    get_url:
+      url: https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl
+      dest: /usr/local/bin/kubectl
+      mode: '0755'
+
+  # -------------------------
+  # Install eksctl
+  # -------------------------
+  - name: Download eksctl
+    get_url:
+      url: https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz
+      dest: /tmp/eksctl.tar.gz
+
+  - name: Extract eksctl
+    unarchive:
+      src: /tmp/eksctl.tar.gz
+      dest: /usr/local/bin/
+      remote_src: yes
