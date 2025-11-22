@@ -78,19 +78,12 @@ pipeline {
         //     }
         // }
         
-        // Image build and push to aws DockerHub Repository
-        stage("Docker Image Build") {
+        // Multiarch Image build and push to DockerHub Repository
+    
+        stage("Docker Image multiarch build & push") {
             steps {
                 script {
-                        docker_build("devopsclasscodes","${env.BUILD_NUMBER}","hdxt25")            
-                }
-            }
-        }
-
-        stage("Docker Image Push") {
-            steps {
-                script {
-                        docker_push("devopsclasscodes","${env.BUILD_NUMBER}","hdxt25")
+                        docker_multiarch_build("devopsclasscodes","${env.BUILD_NUMBER}","hdxt25")
                 }
             }
         }
@@ -98,12 +91,10 @@ pipeline {
         stage("TRIVY Image Scan") {
             steps {
                 script {
-                        trivy_image_scan("devopsclasscodes","${env.BUILD_NUMBER}","hdxt25")                   
+                        trivy_multiarch_image_scan("devopsclasscodes","${env.BUILD_NUMBER}","hdxt25")                   
                 }
             }
         }
-
- 
 
         stage("Update: Kubernetes manifest"){
             steps{
