@@ -101,9 +101,9 @@ pipeline {
                 script{
                     dir('kubernetes'){
                         sh """
-                            BUILD_NUMBER=\$(git rev-parse HEAD)
-                            echo "Current BUILD NUMBER: \$BUILD_NUMBER"
-                            sed -i 's|hdxt25/devopsclasscodes:.*|hdxt25/devopsclasscodes:\${BUILD_NUMBER}|g' devopsclasscodes-deployment.yaml
+                            echo "Current BUILD_NUMBER: ${BUILD_NUMBER}"
+                            sed -i "s|hdxt25/devopsclasscodes:.*|hdxt25/devopsclasscodes:${BUILD_NUMBER}|g" devopsclasscodes-deployment.yaml
+                            echo "Updated image in manifest:"
                             grep -A 1 "image:" devopsclasscodes-deployment.yaml              
                         """
                     }
