@@ -17,6 +17,6 @@ spec:
     spec:
       containers:
       - name: devopsclasscodes-cont
-        image: hdxt25/devopsclasscodes:0
+        image: hdxt25/devopsclasscodes:4
         ports:
         - containerPort: 8080
