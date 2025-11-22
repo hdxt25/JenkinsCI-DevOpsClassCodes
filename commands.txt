@@ -1,0 +1,348 @@
+Cloud formation commands ->
+
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "EKS Cluster with 3-node t3.micro Managed Nodegroup",
+
+  "Resources": {
+    "EKSClusterRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": { "Service": "eks.amazonaws.com" },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+        ]
+      }
+    },
+
+    "EKSNodeRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": { "Service": "ec2.amazonaws.com" },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+          "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+          "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+        ]
+      }
+    },
+
+    "VPC": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.0.0.0/16",
+        "EnableDnsSupport": true,
+        "EnableDnsHostnames": true,
+        "Tags": [{ "Key": "Name", "Value": "eks-vpc" }]
+      }
+    },
+
+    "Subnet1": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": { "Ref": "VPC" },
+        "CidrBlock": "10.0.1.0/24",
+        "AvailabilityZone": { "Fn::Select": [0, { "Fn::GetAZs": "" }] },
+        "MapPublicIpOnLaunch": true
+      }
+    },
+
+    "Subnet2": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": { "Ref": "VPC" },
+        "CidrBlock": "10.0.2.0/24",
+        "AvailabilityZone": { "Fn::Select": [1, { "Fn::GetAZs": "" }] },
+        "MapPublicIpOnLaunch": true
+      }
+    },
+
+    "InternetGateway": {
+      "Type": "AWS::EC2::InternetGateway"
+    },
+
+    "AttachGateway": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": { "Ref": "VPC" },
+        "InternetGatewayId": { "Ref": "InternetGateway" }
+      }
+    },
+
+    "PublicRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": { "Ref": "VPC" }
+      }
+    },
+
+    "PublicRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": "AttachGateway",
+      "Properties": {
+        "RouteTableId": { "Ref": "PublicRouteTable" },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": { "Ref": "InternetGateway" }
+      }
+    },
+
+    "Subnet1RouteTableAssoc": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": { "Ref": "Subnet1" },
+        "RouteTableId": { "Ref": "PublicRouteTable" }
+      }
+    },
+
+    "Subnet2RouteTableAssoc": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": { "Ref": "Subnet2" },
+        "RouteTableId": { "Ref": "PublicRouteTable" }
+      }
+    },
+
+    "EKSCluster": {
+      "Type": "AWS::EKS::Cluster",
+      "Properties": {
+        "Name": "my-eks-cluster",
+        "Version": "1.30",
+        "RoleArn": { "Fn::GetAtt": ["EKSClusterRole", "Arn"] },
+        "ResourcesVpcConfig": {
+          "SubnetIds": [
+            { "Ref": "Subnet1" },
+            { "Ref": "Subnet2" }
+          ]
+        }
+      }
+    },
+
+    "NodeGroup": {
+      "Type": "AWS::EKS::Nodegroup",
+      "DependsOn": "EKSCluster",
+      "Properties": {
+        "ClusterName": { "Ref": "EKSCluster" },
+        "NodegroupName": "eks-micro-nodes",
+        "NodeRole": { "Fn::GetAtt": ["EKSNodeRole", "Arn"] },
+        "ScalingConfig": {
+          "MinSize": 3,
+          "DesiredSize": 3,
+          "MaxSize": 3
+        },
+        "InstanceTypes": ["t3.micro"],
+        "Subnets": [
+          { "Ref": "Subnet1" },
+          { "Ref": "Subnet2" }
+        ]
+      }
+    }
+  }
+}
+
+---
+aws cloudformation deploy \
+  --template-file eks-cluster.json \
+  --stack-name my-eks-stack \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
+-------------------------------------------------------------
+
+Ansible commands->
+
+---
+- name: Install Jenkins, Git, Docker, Trivy, OWASP, AWS CLI, eksctl, kubectl
+  hosts: localhost
+  become: yes
+  connection: local
+
+  vars:
+    local_user: "{{ lookup('env','USER') }}"
+
+  tasks:
+
+  # -------------------------
+  # System update
+  # -------------------------
+  - name: Update apt packages
+    apt:
+      update_cache: yes
+
+  # -------------------------
+  # Install Git
+  # -------------------------
+  - name: Install Git
+    apt:
+      name: git
+      state: present
+
+  # -------------------------
+  # Install Java (required for Jenkins & Dependency Check)
+  # -------------------------
+  - name: Install OpenJDK 17
+    apt:
+      name: openjdk-17-jdk
+      state: present
+
+  # -------------------------
+  # Install Jenkins
+  # -------------------------
+  - name: Add Jenkins repo key
+    get_url:
+      url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+      dest: /usr/share/keyrings/jenkins-keyring.asc
+      mode: "0644"
+
+  - name: Add Jenkins repository
+    apt_repository:
+      repo: "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/"
+      state: present
+
+  - name: Install Jenkins
+    apt:
+      name: jenkins
+      state: present
+      update_cache: yes
+
+  # -------------------------
+  # Install Docker
+  # -------------------------
+  - name: Install Docker
+    apt:
+      name: docker.io
+      state: present
+
+  - name: Enable Docker
+    systemd:
+      name: docker
+      state: started
+      enabled: yes
+
+  - name: Add local user to docker group
+    user:
+      name: "{{ local_user }}"
+      groups: docker
+      append: yes
+
+  # -------------------------
+  # Install Trivy
+  # -------------------------
+  - name: Add Trivy GPG key
+    apt_key:
+      url: https://aquasecurity.github.io/trivy-repo/deb/public.key
+      state: present
+
+  - name: Add Trivy repository
+    apt_repository:
+      repo: "deb https://aquasecurity.github.io/trivy-repo/deb jammy main"
+      state: present
+
+  - name: Install Trivy
+    apt:
+      name: trivy
+      state: present
+
+
+  # -------------------------
+  # Install AWS CLI v2
+  # -------------------------
+  - name: Install unzip (required for AWS CLI ZIP)
+    apt:
+      name: unzip
+      state: present
+      update_cache: yes
+
+  - name: Download AWS CLI v2
+    get_url:
+      url: "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+      dest: /tmp/awscliv2.zip
+
+  - name: Unzip AWS CLI
+    unarchive:
+      src: /tmp/awscliv2.zip
+      dest: /tmp/
+      remote_src: yes
+
+  - name: Install AWS CLI
+    command: /tmp/aws/install
+
+  # -------------------------
+  # Install kubectl
+  # -------------------------
+  - name: Install kubectl
+    get_url:
+      url: https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl
+      dest: /usr/local/bin/kubectl
+      mode: '0755'
+
+  # -------------------------
+  # Install eksctl
+  # -------------------------
+  - name: Download eksctl
+    get_url:
+      url: https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz
+      dest: /tmp/eksctl.tar.gz
+
+  - name: Extract eksctl
+    unarchive:
+      src: /tmp/eksctl.tar.gz
+      dest: /usr/local/bin/
+      remote_src: yes
+
+---->
+ansible-playbook tools.yaml
+------------------------------------
+Eks cluster ->
+eksctl utils associate-iam-oidc-provider --cluster my-eks-cluster --approve
+
+curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.14.0/docs/install/iam_policy.json
+
+aws iam create-policy \
+    --policy-name AWSLoadBalancerControllerIAMPolicy \
+    --policy-document file://iam_policy.json
+
+eksctl create iamserviceaccount \
+  --cluster=my-eks-cluster \
+  --namespace=kube-system \
+  --name=aws-load-balancer-controller \
+  --role-name AmazonEKSLoadBalancerControllerRole \
+  --attach-policy-arn=arn:aws:iam::839087537051:policy/AWSLoadBalancerControllerIAMPolicy \
+  --approve
+
+kubectl get sa -n kube-system
+
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update eks
+
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n kube-system \
+  --set clusterName=my-eks-cluster \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name=aws-load-balancer-controller \
+  --set region=us-east-2 \
+  --set vpcId=vpc-05b01cf2290867e41
+
+kubectl get deployment -n kube-system aws-load-balancer-controller
+
+helm repo add argo https://argoproj.github.io/argo-helm
+helm repo update
+helm install argocd argo/argo-cd --version 9.1.1 -n argocd --create-namespace
+
+kubectl get svc -n argocd --> check argocd is running or not.
+
+
